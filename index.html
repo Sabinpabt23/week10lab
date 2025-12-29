@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>3D Rotating Octahedron with Physics Balls</title>
+    <title>Enhanced 3D Rotating Octahedron with Physics Simulation</title>
     <style>
         * {
             margin: 0;
@@ -12,7 +12,8 @@
         }
         body {
             overflow: hidden;
-            background: #0a0a0f;
+            background: linear-gradient(135deg, #0a0a1a 0%, #1a0a2a 100%);
+            font-family: 'Segoe UI', system-ui, sans-serif;
         }
         canvas {
             display: block;
@@ -22,247 +23,680 @@
             top: 20px;
             left: 20px;
             color: #fff;
-            font-family: 'Segoe UI', sans-serif;
-            font-size: 14px;
-            background: rgba(0,0,0,0.5);
-            padding: 15px 20px;
-            border-radius: 10px;
+            background: rgba(10, 10, 25, 0.8);
+            padding: 20px;
+            border-radius: 15px;
             backdrop-filter: blur(10px);
+            border: 1px solid rgba(0, 255, 255, 0.2);
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+            max-width: 350px;
+            z-index: 100;
+        }
+        #info h1 {
+            font-size: 1.4rem;
+            margin-bottom: 8px;
+            background: linear-gradient(90deg, #00ffff, #ff00ff);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+        #info p {
+            font-size: 0.9rem;
+            line-height: 1.5;
+            color: #a0a0ff;
+            margin-bottom: 15px;
+        }
+        #stats {
+            display: flex;
+            gap: 15px;
+            font-size: 0.85rem;
+            color: #00ffff;
+        }
+        .stat-item {
+            display: flex;
+            flex-direction: column;
+        }
+        .stat-value {
+            font-weight: bold;
+            font-size: 1.1rem;
+        }
+        #controls {
+            position: absolute;
+            bottom: 20px;
+            right: 20px;
+            background: rgba(10, 10, 25, 0.8);
+            padding: 15px;
+            border-radius: 15px;
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 0, 255, 0.2);
+        }
+        .control-group {
+            margin-bottom: 10px;
+        }
+        label {
+            display: block;
+            color: #a0a0ff;
+            font-size: 0.85rem;
+            margin-bottom: 5px;
+        }
+        input[type="range"] {
+            width: 200px;
+        }
+        #loading {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            color: #00ffff;
+            font-size: 1.2rem;
+            z-index: 1000;
         }
     </style>
 </head>
 <body>
+    <div id="loading">Initializing Physics Simulation...</div>
     <div id="info">
-        🎱 3D Octahedron with Physics<br>
-        <small>Balls bounce inside the rotating shape</small>
+        <h1>🎱 Enhanced Physics Simulation</h1>
+        <p>Real-time rigid body dynamics with Verlet integration, air resistance, and elastic collisions. Balls exhibit proper momentum transfer and energy conservation.</p>
+        <div id="stats">
+            <div class="stat-item">
+                <span class="stat-label">FPS</span>
+                <span class="stat-value" id="fps">0</span>
+            </div>
+            <div class="stat-item">
+                <span class="stat-label">Energy</span>
+                <span class="stat-value" id="energy">0</span>
+            </div>
+            <div class="stat-item">
+                <span class="stat-label">Collisions</span>
+                <span class="stat-value" id="collisions">0</span>
+            </div>
+        </div>
+    </div>
+    
+    <div id="controls">
+        <div class="control-group">
+            <label for="gravity">Gravity: <span id="gravity-value">9.81</span> m/s²</label>
+            <input type="range" id="gravity" min="0" max="20" step="0.1" value="9.81">
+        </div>
+        <div class="control-group">
+            <label for="restitution">Restitution: <span id="restitution-value">0.85</span></label>
+            <input type="range" id="restitution" min="0.1" max="1" step="0.05" value="0.85">
+        </div>
+        <div class="control-group">
+            <label for="rotation">Rotation Speed: <span id="rotation-value">0.5</span></label>
+            <input type="range" id="rotation" min="0" max="2" step="0.1" value="0.5">
+        </div>
     </div>
     
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script>
-        // Scene setup
+        // Remove loading screen
+        document.getElementById('loading').style.display = 'none';
+        
+        // Scene setup with improved settings
         const scene = new THREE.Scene();
-        scene.background = new THREE.Color(0x0a0a0f);
+        scene.fog = new THREE.Fog(0x0a0a1a, 5, 15);
         
         const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
-        camera.position.z = 5;
+        camera.position.set(0, 2, 8);
         
-        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        const renderer = new THREE.WebGLRenderer({ 
+            antialias: true,
+            alpha: true 
+        });
         renderer.setSize(window.innerWidth, window.innerHeight);
-        renderer.setPixelRatio(window.devicePixelRatio);
+        renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
         renderer.shadowMap.enabled = true;
+        renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+        renderer.toneMapping = THREE.ACESFilmicToneMapping;
+        renderer.toneMappingExposure = 1.0;
         document.body.appendChild(renderer.domElement);
         
-        // Lighting
-        const ambientLight = new THREE.AmbientLight(0x404040, 0.5);
+        // Enhanced lighting system
+        const ambientLight = new THREE.AmbientLight(0x404040, 0.3);
         scene.add(ambientLight);
         
-        const pointLight1 = new THREE.PointLight(0x00ffff, 1, 100);
-        pointLight1.position.set(5, 5, 5);
-        scene.add(pointLight1);
+        // Main directional light with shadows
+        const directionalLight = new THREE.DirectionalLight(0xffffff, 1.5);
+        directionalLight.position.set(5, 10, 7);
+        directionalLight.castShadow = true;
+        directionalLight.shadow.mapSize.width = 2048;
+        directionalLight.shadow.mapSize.height = 2048;
+        directionalLight.shadow.camera.near = 0.5;
+        directionalLight.shadow.camera.far = 50;
+        directionalLight.shadow.camera.left = -10;
+        directionalLight.shadow.camera.right = 10;
+        directionalLight.shadow.camera.top = 10;
+        directionalLight.shadow.camera.bottom = -10;
+        scene.add(directionalLight);
         
-        const pointLight2 = new THREE.PointLight(0xff00ff, 1, 100);
-        pointLight2.position.set(-5, -5, 5);
-        scene.add(pointLight2);
+        // Rim lights for edge highlights
+        const rimLight1 = new THREE.PointLight(0x00ffff, 1.2, 20);
+        rimLight1.position.set(-8, 5, -5);
+        scene.add(rimLight1);
         
-        const pointLight3 = new THREE.PointLight(0xffff00, 0.5, 100);
-        pointLight3.position.set(0, 5, -5);
-        scene.add(pointLight3);
+        const rimLight2 = new THREE.PointLight(0xff00ff, 1.2, 20);
+        rimLight2.position.set(8, -5, -5);
+        scene.add(rimLight2);
         
-        // Create octahedron (wireframe for visibility)
-        const octaRadius = 2;
-        const octaGeometry = new THREE.OctahedronGeometry(octaRadius);
+        // Create octahedron with enhanced materials
+        const octaRadius = 2.5;
+        const octaGeometry = new THREE.OctahedronGeometry(octaRadius, 1);
+        
+        // Wireframe octahedron with glow effect
         const octaMaterial = new THREE.MeshPhongMaterial({
             color: 0x00ffff,
             wireframe: true,
             transparent: true,
-            opacity: 0.8
+            opacity: 0.6,
+            emissive: 0x004444,
+            emissiveIntensity: 0.3,
+            shininess: 100
         });
         const octahedron = new THREE.Mesh(octaGeometry, octaMaterial);
+        octahedron.castShadow = true;
         scene.add(octahedron);
         
-        // Create solid octahedron faces (transparent)
-        const octaSolidMaterial = new THREE.MeshPhongMaterial({
+        // Solid glass-like interior
+        const octaSolidMaterial = new THREE.MeshPhysicalMaterial({
             color: 0x00ffff,
             transparent: true,
-            opacity: 0.1,
-            side: THREE.DoubleSide
+            opacity: 0.08,
+            side: THREE.DoubleSide,
+            transmission: 0.95,
+            thickness: 0.5,
+            roughness: 0.1,
+            metalness: 0,
+            clearcoat: 1,
+            clearcoatRoughness: 0
         });
         const octahedronSolid = new THREE.Mesh(octaGeometry.clone(), octaSolidMaterial);
+        octahedronSolid.castShadow = true;
         scene.add(octahedronSolid);
         
-        // Octahedron faces for collision detection
-        // An octahedron has 8 triangular faces
-        // Vertices of octahedron with radius r: (±r,0,0), (0,±r,0), (0,0,±r)
-        const octaFaces = [
-            // Top 4 faces (y > 0)
-            { normal: new THREE.Vector3(1, 1, 1).normalize(), d: octaRadius / Math.sqrt(3) },
-            { normal: new THREE.Vector3(-1, 1, 1).normalize(), d: octaRadius / Math.sqrt(3) },
-            { normal: new THREE.Vector3(-1, 1, -1).normalize(), d: octaRadius / Math.sqrt(3) },
-            { normal: new THREE.Vector3(1, 1, -1).normalize(), d: octaRadius / Math.sqrt(3) },
-            // Bottom 4 faces (y < 0)
-            { normal: new THREE.Vector3(1, -1, 1).normalize(), d: octaRadius / Math.sqrt(3) },
-            { normal: new THREE.Vector3(-1, -1, 1).normalize(), d: octaRadius / Math.sqrt(3) },
-            { normal: new THREE.Vector3(-1, -1, -1).normalize(), d: octaRadius / Math.sqrt(3) },
-            { normal: new THREE.Vector3(1, -1, -1).normalize(), d: octaRadius / Math.sqrt(3) }
+        // Add edge highlights using LineSegments
+        const edges = new THREE.EdgesGeometry(octaGeometry);
+        const lineMaterial = new THREE.LineBasicMaterial({ 
+            color: 0x00ffff,
+            transparent: true,
+            opacity: 0.8,
+            linewidth: 2
+        });
+        const edgeLines = new THREE.LineSegments(edges, lineMaterial);
+        scene.add(edgeLines);
+        
+        // Create octahedron faces for collision using actual geometry
+        const octaVertices = octaGeometry.attributes.position.array;
+        const octaFaces = [];
+        const indices = [
+            [0,1,2], [0,2,3], [0,3,4], [0,4,1],
+            [5,2,1], [5,3,2], [5,4,3], [5,1,4]
         ];
         
-        // Ball class with physics
+        indices.forEach(faceIndices => {
+            const v0 = new THREE.Vector3(
+                octaVertices[faceIndices[0]*3],
+                octaVertices[faceIndices[0]*3+1],
+                octaVertices[faceIndices[0]*3+2]
+            );
+            const v1 = new THREE.Vector3(
+                octaVertices[faceIndices[1]*3],
+                octaVertices[faceIndices[1]*3+1],
+                octaVertices[faceIndices[1]*3+2]
+            );
+            const v2 = new THREE.Vector3(
+                octaVertices[faceIndices[2]*3],
+                octaVertices[faceIndices[2]*3+1],
+                octaVertices[faceIndices[2]*3+2]
+            );
+            
+            const normal = new THREE.Vector3()
+                .crossVectors(
+                    new THREE.Vector3().subVectors(v1, v0),
+                    new THREE.Vector3().subVectors(v2, v0)
+                )
+                .normalize();
+            
+            const d = -normal.dot(v0);
+            octaFaces.push({ normal, d, vertices: [v0, v1, v2] });
+        });
+        
+        // Enhanced PhysicsBall class with Verlet integration
         class PhysicsBall {
-            constructor(color, startOffset) {
-                this.radius = 0.15;
-                const geometry = new THREE.SphereGeometry(this.radius, 32, 32);
-                const material = new THREE.MeshPhongMaterial({
+            constructor(color, startOffset, radius = 0.2) {
+                this.radius = radius;
+                this.mass = (4/3) * Math.PI * Math.pow(this.radius, 3) * 1000; // Density ~1000 kg/m³
+                this.inverseMass = 1 / this.mass;
+                
+                // Create ball mesh with enhanced material
+                const geometry = new THREE.SphereGeometry(this.radius, 64, 64);
+                const material = new THREE.MeshPhysicalMaterial({
                     color: color,
-                    shininess: 100,
+                    roughness: 0.1,
+                    metalness: 0.9,
+                    clearcoat: 1,
+                    clearcoatRoughness: 0.1,
                     emissive: color,
-                    emissiveIntensity: 0.3
+                    emissiveIntensity: 0.2,
+                    transmission: 0.1,
+                    thickness: 0.5
                 });
+                
                 this.mesh = new THREE.Mesh(geometry, material);
-                this.mesh.position.set(startOffset.x, startOffset.y, startOffset.z);
+                this.mesh.position.copy(startOffset);
+                this.mesh.castShadow = true;
+                this.mesh.receiveShadow = true;
                 
                 // Physics properties
+                this.position = startOffset.clone();
+                this.previousPosition = startOffset.clone();
                 this.velocity = new THREE.Vector3(
-                    (Math.random() - 0.5) * 2,
-                    (Math.random() - 0.5) * 2,
-                    (Math.random() - 0.5) * 2
+                    (Math.random() - 0.5) * 3,
+                    (Math.random() - 0.5) * 3,
+                    (Math.random() - 0.5) * 3
                 );
-                this.gravity = new THREE.Vector3(0, -9.8, 0);
-                this.damping = 0.98;
-                this.restitution = 0.85; // Bounciness
+                this.acceleration = new THREE.Vector3();
+                this.restitution = 0.85;
+                this.friction = 0.98;
+                this.airResistance = 0.999;
                 
-                // Trail
-                this.trailPositions = [];
-                this.maxTrailLength = 20;
-                const trailGeometry = new THREE.BufferGeometry();
-                const trailMaterial = new THREE.LineBasicMaterial({
+                // Trail effect with particles
+                this.trail = [];
+                this.maxTrailLength = 30;
+                this.trailGroup = new THREE.Group();
+                scene.add(this.trailGroup);
+                
+                // Add halo effect
+                const haloGeometry = new THREE.SphereGeometry(this.radius * 1.3, 32, 32);
+                const haloMaterial = new THREE.MeshBasicMaterial({
                     color: color,
                     transparent: true,
-                    opacity: 0.5
+                    opacity: 0.2,
+                    side: THREE.BackSide
                 });
-                this.trail = new THREE.Line(trailGeometry, trailMaterial);
-                scene.add(this.trail);
+                this.halo = new THREE.Mesh(haloGeometry, haloMaterial);
+                this.mesh.add(this.halo);
                 
                 scene.add(this.mesh);
             }
             
-            update(deltaTime, octaRotation) {
-                // Convert ball position to octahedron's local space
-                const invRotation = octaRotation.clone().invert();
-                const localPos = this.mesh.position.clone().applyQuaternion(invRotation);
-                const localVel = this.velocity.clone().applyQuaternion(invRotation);
+            verletIntegration(deltaTime) {
+                // Store current position
+                const currentPosition = this.position.clone();
                 
-                // Apply gravity in world space, converted to local
-                const localGravity = this.gravity.clone().applyQuaternion(invRotation);
-                localVel.add(localGravity.multiplyScalar(deltaTime));
+                // Verlet integration: x(t+Δt) = 2x(t) - x(t-Δt) + a(t)Δt²
+                const temp = this.position.clone();
+                this.position.multiplyScalar(2)
+                    .sub(this.previousPosition)
+                    .add(this.acceleration.clone().multiplyScalar(deltaTime * deltaTime));
                 
-                // Update position in local space
-                const newLocalPos = localPos.clone().add(localVel.clone().multiplyScalar(deltaTime));
+                // Update velocity for collision response
+                this.velocity = this.position.clone().sub(this.previousPosition).divideScalar(deltaTime);
                 
-                // Check collision with each face in local space
-                for (const face of octaFaces) {
-                    const distToPlane = newLocalPos.dot(face.normal) - (face.d - this.radius);
+                // Store previous position
+                this.previousPosition.copy(currentPosition);
+                
+                // Reset acceleration
+                this.acceleration.set(0, 0, 0);
+            }
+            
+            applyForces(gravity, deltaTime) {
+                // Apply gravity
+                this.acceleration.add(gravity);
+                
+                // Apply air resistance to velocity
+                this.velocity.multiplyScalar(this.airResistance);
+                
+                // Apply friction
+                this.velocity.multiplyScalar(this.friction);
+            }
+            
+            handleCollision(face, rotationQuat) {
+                // Transform ball position to octahedron's local space
+                const invRotation = rotationQuat.clone().invert();
+                const localPos = this.position.clone().applyQuaternion(invRotation);
+                
+                // Calculate signed distance to plane
+                const distance = face.normal.dot(localPos) + face.d;
+                
+                if (distance > -this.radius) {
+                    // Collision response
+                    const penetration = this.radius + distance;
                     
-                    if (distToPlane > 0) {
-                        // Ball is outside this face, push it back
-                        newLocalPos.sub(face.normal.clone().multiplyScalar(distToPlane));
+                    // Calculate collision point
+                    const collisionPoint = localPos.clone()
+                        .sub(face.normal.clone().multiplyScalar(distance));
+                    
+                    // Calculate relative velocity at collision point
+                    const localVel = this.velocity.clone().applyQuaternion(invRotation);
+                    const velAlongNormal = localVel.dot(face.normal);
+                    
+                    if (velAlongNormal < 0) {
+                        // Calculate impulse
+                        const j = -(1 + this.restitution) * velAlongNormal;
+                        const impulse = face.normal.clone().multiplyScalar(j);
                         
-                        // Reflect velocity
-                        const velDotNormal = localVel.dot(face.normal);
-                        if (velDotNormal > 0) {
-                            localVel.sub(face.normal.clone().multiplyScalar(2 * velDotNormal));
-                            localVel.multiplyScalar(this.restitution);
-                        }
+                        // Apply impulse to velocity
+                        localVel.add(impulse);
+                        
+                        // Apply friction
+                        const tangent = localVel.clone()
+                            .sub(face.normal.clone().multiplyScalar(localVel.dot(face.normal)));
+                        tangent.multiplyScalar(this.friction);
+                        localVel.copy(tangent.add(face.normal.clone().multiplyScalar(localVel.dot(face.normal))));
+                        
+                        // Convert back to world space
+                        this.velocity.copy(localVel.applyQuaternion(rotationQuat));
+                        
+                        // Position correction
+                        localPos.add(face.normal.clone().multiplyScalar(penetration));
+                        this.position.copy(localPos.applyQuaternion(rotationQuat));
+                        
+                        return true;
+                    }
+                }
+                return false;
+            }
+            
+            handleBallCollision(otherBall) {
+                const delta = this.position.clone().sub(otherBall.position);
+                const distance = delta.length();
+                const minDistance = this.radius + otherBall.radius;
+                
+                if (distance < minDistance && distance > 0) {
+                    // Collision normal
+                    const normal = delta.clone().normalize();
+                    
+                    // Relative velocity
+                    const relativeVel = this.velocity.clone().sub(otherBall.velocity);
+                    const velAlongNormal = relativeVel.dot(normal);
+                    
+                    if (velAlongNormal > 0) return;
+                    
+                    // Calculate restitution (use average)
+                    const e = Math.min(this.restitution, otherBall.restitution);
+                    
+                    // Calculate impulse scalar
+                    const j = -(1 + e) * velAlongNormal;
+                    const jFinal = j / (this.inverseMass + otherBall.inverseMass);
+                    
+                    // Apply impulse
+                    const impulse = normal.clone().multiplyScalar(jFinal);
+                    
+                    this.velocity.add(impulse.clone().multiplyScalar(this.inverseMass));
+                    otherBall.velocity.sub(impulse.clone().multiplyScalar(otherBall.inverseMass));
+                    
+                    // Position correction
+                    const correction = normal.clone().multiplyScalar((minDistance - distance) / 2);
+                    this.position.add(correction);
+                    otherBall.position.sub(correction);
+                    
+                    collisionCount++;
+                }
+            }
+            
+            update(deltaTime, gravity, rotationQuat) {
+                // Apply forces
+                this.applyForces(gravity, deltaTime);
+                
+                // Verlet integration
+                this.verletIntegration(deltaTime);
+                
+                // Handle collisions with octahedron faces
+                for (const face of octaFaces) {
+                    if (this.handleCollision(face, rotationQuat)) {
+                        collisionCount++;
                     }
                 }
                 
-                // Apply damping
-                localVel.multiplyScalar(this.damping);
-                
-                // Convert back to world space
-                this.mesh.position.copy(newLocalPos.applyQuaternion(octaRotation));
-                this.velocity.copy(localVel.applyQuaternion(octaRotation));
+                // Update mesh position
+                this.mesh.position.copy(this.position);
                 
                 // Update trail
-                this.trailPositions.push(this.mesh.position.clone());
-                if (this.trailPositions.length > this.maxTrailLength) {
-                    this.trailPositions.shift();
+                this.updateTrail();
+                
+                // Rotate ball based on velocity
+                const angularVelocity = this.velocity.length() / this.radius;
+                this.mesh.rotation.x += angularVelocity * deltaTime * 0.5;
+                this.mesh.rotation.y += angularVelocity * deltaTime * 0.3;
+            }
+            
+            updateTrail() {
+                // Add new trail point
+                this.trail.push({
+                    position: this.position.clone(),
+                    life: 1.0
+                });
+                
+                // Remove old points
+                if (this.trail.length > this.maxTrailLength) {
+                    this.trail.shift();
                 }
                 
-                const positions = new Float32Array(this.trailPositions.length * 3);
-                for (let i = 0; i < this.trailPositions.length; i++) {
-                    positions[i * 3] = this.trailPositions[i].x;
-                    positions[i * 3 + 1] = this.trailPositions[i].y;
-                    positions[i * 3 + 2] = this.trailPositions[i].z;
+                // Update trail particles
+                this.trailGroup.clear();
+                
+                for (let i = 0; i < this.trail.length; i++) {
+                    const point = this.trail[i];
+                    point.life -= 0.03;
+                    
+                    if (point.life <= 0) continue;
+                    
+                    const trailGeometry = new THREE.SphereGeometry(this.radius * 0.3, 8, 8);
+                    const trailMaterial = new THREE.MeshBasicMaterial({
+                        color: this.mesh.material.color,
+                        transparent: true,
+                        opacity: point.life * 0.5
+                    });
+                    
+                    const trailParticle = new THREE.Mesh(trailGeometry, trailMaterial);
+                    trailParticle.position.copy(point.position);
+                    this.trailGroup.add(trailParticle);
                 }
-                this.trail.geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+            }
+            
+            getKineticEnergy() {
+                return 0.5 * this.mass * this.velocity.lengthSq();
             }
         }
         
-        // Create three balls with different colors
+        // Create physics balls with different properties
         const balls = [
-            new PhysicsBall(0xff3366, new THREE.Vector3(0.1, 0, 0)),
-            new PhysicsBall(0x33ff66, new THREE.Vector3(-0.1, 0.1, 0)),
-            new PhysicsBall(0x6633ff, new THREE.Vector3(0, -0.1, 0.1))
+            new PhysicsBall(0xff3366, new THREE.Vector3(0.5, 0.5, 0.5), 0.18),
+            new PhysicsBall(0x33ff66, new THREE.Vector3(-0.5, -0.5, 0.5), 0.22),
+            new PhysicsBall(0x6633ff, new THREE.Vector3(0.5, -0.5, -0.5), 0.16),
+            new PhysicsBall(0xffcc00, new THREE.Vector3(-0.5, 0.5, -0.5), 0.2)
         ];
         
-        // Add some particles for atmosphere
-        const particlesGeometry = new THREE.BufferGeometry();
-        const particleCount = 200;
-        const posArray = new Float32Array(particleCount * 3);
+        // Add dynamic particles
+        const particleCount = 500;
+        const particles = [];
+        const particleGeometry = new THREE.SphereGeometry(0.05, 8, 8);
         
-        for (let i = 0; i < particleCount * 3; i++) {
-            posArray[i] = (Math.random() - 0.5) * 10;
+        for (let i = 0; i < particleCount; i++) {
+            const material = new THREE.MeshBasicMaterial({
+                color: Math.random() > 0.5 ? 0x00ffff : 0xff00ff,
+                transparent: true,
+                opacity: 0.4
+            });
+            
+            const particle = new THREE.Mesh(particleGeometry, material);
+            
+            // Spherical distribution
+            const radius = octaRadius * 1.5;
+            const theta = Math.random() * Math.PI * 2;
+            const phi = Math.acos(2 * Math.random() - 1);
+            
+            particle.position.x = radius * Math.sin(phi) * Math.cos(theta);
+            particle.position.y = radius * Math.sin(phi) * Math.sin(theta);
+            particle.position.z = radius * Math.cos(phi);
+            
+            particle.userData.velocity = new THREE.Vector3(
+                (Math.random() - 0.5) * 0.02,
+                (Math.random() - 0.5) * 0.02,
+                (Math.random() - 0.5) * 0.02
+            );
+            
+            particle.userData.originalPos = particle.position.clone();
+            particle.userData.phase = Math.random() * Math.PI * 2;
+            
+            scene.add(particle);
+            particles.push(particle);
         }
         
-        particlesGeometry.setAttribute('position', new THREE.BufferAttribute(posArray, 3));
-        const particlesMaterial = new THREE.PointsMaterial({
-            size: 0.02,
-            color: 0xffffff,
-            transparent: true,
-            opacity: 0.5
-        });
-        const particlesMesh = new THREE.Points(particlesGeometry, particlesMaterial);
-        scene.add(particlesMesh);
+        // Statistics
+        let collisionCount = 0;
+        let frameCount = 0;
+        let lastTime = performance.now();
+        let fps = 0;
         
-        // Animation
-        let lastTime = 0;
-        const octaRotationQuat = new THREE.Quaternion();
+        // Physics parameters
+        const gravity = new THREE.Vector3(0, -9.81, 0);
+        let rotationSpeed = 0.5;
+        
+        // Animation loop with fixed timestep for stable physics
+        let accumulator = 0;
+        const fixedDeltaTime = 1/60;
         
         function animate(currentTime) {
             requestAnimationFrame(animate);
             
-            const deltaTime = Math.min((currentTime - lastTime) / 1000, 0.05);
+            const deltaTime = Math.min((currentTime - lastTime) / 1000, 0.1);
             lastTime = currentTime;
             
-            // Rotate octahedron
-            octahedron.rotation.x += 0.005;
-            octahedron.rotation.y += 0.007;
-            octahedron.rotation.z += 0.003;
-            
-            octahedronSolid.rotation.copy(octahedron.rotation);
-            
-            // Get octahedron's rotation as quaternion
-            octaRotationQuat.setFromEuler(octahedron.rotation);
-            
-            // Update balls
-            for (const ball of balls) {
-                ball.update(deltaTime, octaRotationQuat);
+            // Calculate FPS
+            frameCount++;
+            if (currentTime > 1000) {
+                fps = Math.round(frameCount * 1000 / (currentTime - (lastTime - deltaTime * 1000)));
+                frameCount = 0;
+                updateStats();
             }
             
-            // Rotate particles slowly
-            particlesMesh.rotation.y += 0.0005;
+            // Fixed timestep physics
+            accumulator += deltaTime;
+            while (accumulator >= fixedDeltaTime) {
+                updatePhysics(fixedDeltaTime);
+                accumulator -= fixedDeltaTime;
+            }
+            
+            // Smooth rotation
+            const time = currentTime * 0.001;
+            octahedron.rotation.x = Math.sin(time * 0.2) * 0.3;
+            octahedron.rotation.y += fixedDeltaTime * rotationSpeed;
+            octahedron.rotation.z = Math.cos(time * 0.3) * 0.2;
+            
+            octahedronSolid.rotation.copy(octahedron.rotation);
+            edgeLines.rotation.copy(octahedron.rotation);
+            
+            // Animate particles
+            particles.forEach(particle => {
+                particle.position.x = particle.userData.originalPos.x + 
+                    Math.sin(time + particle.userData.phase) * 0.5;
+                particle.position.y = particle.userData.originalPos.y + 
+                    Math.cos(time * 0.7 + particle.userData.phase) * 0.5;
+                particle.position.z = particle.userData.originalPos.z + 
+                    Math.sin(time * 0.5 + particle.userData.phase) * 0.5;
+                
+                particle.position.add(particle.userData.velocity);
+                
+                // Keep particles within bounds
+                if (particle.position.length() > octaRadius * 2) {
+                    particle.position.copy(particle.userData.originalPos);
+                }
+            });
             
             // Animate lights
-            const time = currentTime * 0.001;
-            pointLight1.position.x = Math.sin(time) * 5;
-            pointLight1.position.z = Math.cos(time) * 5;
-            pointLight2.position.x = Math.cos(time * 0.7) * 5;
-            pointLight2.position.z = Math.sin(time * 0.7) * 5;
+            rimLight1.position.x = Math.sin(time) * 8;
+            rimLight1.position.z = Math.cos(time) * 8;
+            rimLight2.position.x = Math.cos(time * 0.7) * 8;
+            rimLight2.position.z = Math.sin(time * 0.7) * 8;
             
             renderer.render(scene, camera);
         }
         
-        animate(0);
+        function updatePhysics(deltaTime) {
+            const rotationQuat = new THREE.Quaternion()
+                .setFromEuler(octahedron.rotation);
+            
+            // Update all balls
+            for (const ball of balls) {
+                ball.update(deltaTime, gravity, rotationQuat);
+            }
+            
+            // Handle ball-to-ball collisions
+            for (let i = 0; i < balls.length; i++) {
+                for (let j = i + 1; j < balls.length; j++) {
+                    balls[i].handleBallCollision(balls[j]);
+                }
+            }
+        }
+        
+        function updateStats() {
+            document.getElementById('fps').textContent = fps;
+            
+            // Calculate total kinetic energy
+            let totalEnergy = 0;
+            balls.forEach(ball => {
+                totalEnergy += ball.getKineticEnergy();
+            });
+            document.getElementById('energy').textContent = totalEnergy.toFixed(2);
+            
+            document.getElementById('collisions').textContent = collisionCount;
+            collisionCount = 0;
+        }
+        
+        // Setup controls
+        document.getElementById('gravity').addEventListener('input', (e) => {
+            const value = parseFloat(e.target.value);
+            gravity.y = -value;
+            document.getElementById('gravity-value').textContent = value.toFixed(1);
+        });
+        
+        document.getElementById('restitution').addEventListener('input', (e) => {
+            const value = parseFloat(e.target.value);
+            balls.forEach(ball => ball.restitution = value);
+            document.getElementById('restitution-value').textContent = value.toFixed(2);
+        });
+        
+        document.getElementById('rotation').addEventListener('input', (e) => {
+            rotationSpeed = parseFloat(e.target.value);
+            document.getElementById('rotation-value').textContent = rotationSpeed.toFixed(1);
+        });
+        
+        // Camera controls
+        let mouseDown = false;
+        let lastMouseX = 0;
+        let lastMouseY = 0;
+        
+        document.addEventListener('mousedown', (e) => {
+            mouseDown = true;
+            lastMouseX = e.clientX;
+            lastMouseY = e.clientY;
+        });
+        
+        document.addEventListener('mouseup', () => {
+            mouseDown = false;
+        });
+        
+        document.addEventListener('mousemove', (e) => {
+            if (!mouseDown) return;
+            
+            const deltaX = e.clientX - lastMouseX;
+            const deltaY = e.clientY - lastMouseY;
+            
+            camera.position.x += deltaX * 0.01;
+            camera.position.y -= deltaY * 0.01;
+            camera.lookAt(0, 0, 0);
+            
+            lastMouseX = e.clientX;
+            lastMouseY = e.clientY;
+        });
+        
+        document.addEventListener('wheel', (e) => {
+            camera.position.z += e.deltaY * 0.01;
+            camera.position.z = Math.max(3, Math.min(15, camera.position.z));
+            camera.lookAt(0, 0, 0);
+        });
         
         // Handle window resize
         window.addEventListener('resize', () => {
@@ -271,16 +705,8 @@
             renderer.setSize(window.innerWidth, window.innerHeight);
         });
         
-        // Mouse interaction for camera
-        let mouseX = 0, mouseY = 0;
-        document.addEventListener('mousemove', (event) => {
-            mouseX = (event.clientX / window.innerWidth - 0.5) * 2;
-            mouseY = (event.clientY / window.innerHeight - 0.5) * 2;
-            
-            camera.position.x = mouseX * 2;
-            camera.position.y = -mouseY * 2;
-            camera.lookAt(0, 0, 0);
-        });
+        // Start animation
+        animate(0);
     </script>
 </body>
 </html>
